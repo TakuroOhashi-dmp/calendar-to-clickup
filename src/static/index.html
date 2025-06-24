@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>カレンダータスク管理</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <div class="nav-controls">
+                <button id="prevWeek" class="nav-btn">&lt;</button>
+                <button id="nextWeek" class="nav-btn">&gt;</button>
+                <button id="todayBtn" class="today-btn">today</button>
+            </div>
+            <div class="date-range" id="dateRange">May 18 – 24, 2025</div>
+            <div class="view-controls">
+                <button class="view-btn">month</button>
+                <button class="view-btn active">week</button>
+                <button class="view-btn">day</button>
+            </div>
+        </header>
+
+    <div class="calendar-container">
+        <div class="time-column">
+            <div class="time-header">all-day</div>
+            <!-- 6:00～22:00まで1時間ごとに表示 -->
+            <div class="time-slot hour-label" data-hour="6">6:00</div>
+            <div class="time-slot" data-hour="6" data-minute="30"></div>
+            <div class="time-slot hour-label" data-hour="7">7:00</div>
+            <div class="time-slot" data-hour="7" data-minute="30"></div>
+            <div class="time-slot hour-label" data-hour="8">8:00</div>
+            <div class="time-slot" data-hour="8" data-minute="30"></div>
+            <div class="time-slot hour-label" data-hour="9">9:00</div>
+            <div class="time-slot" data-hour="9" data-minute="30"></div>
+            <div class="time-slot hour-label" data-hour="10">10:00</div>
+            <div class="time-slot" data-hour="10" data-minute="30"></div>
+            <div class="time-slot hour-label" data-hour="11">11:00</div>
+            <div class="time-slot" data-hour="11" data-minute="30"></div>
+            <div class="time-slot hour-label" data-hour="12">12:00</div>
+            <div class="time-slot" data-hour="12" data-minute="30"></div>
+            <div class="time-slot hour-label" data-hour="13">13:00</div>
+            <div class="time-slot" data-hour="13" data-minute="30"></div>
+            <div class="time-slot hour-label" data-hour="14">14:00</div>
+            <div class="time-slot" data-hour="14" data-minute="30"></div>
+            <div class="time-slot hour-label" data-hour="15">15:00</div>
+            <div class="time-slot" data-hour="15" data-minute="30"></div>
+            <div class="time-slot hour-label" data-hour="16">16:00</div>
+            <div class="time-slot" data-hour="16" data-minute="30"></div>
+            <div class="time-slot hour-label" data-hour="17">17:00</div>
+            <div class="time-slot" data-hour="17" data-minute="30"></div>
+            <div class="time-slot hour-label" data-hour="18">18:00</div>
+            <div class="time-slot" data-hour="18" data-minute="30"></div>
+            <div class="time-slot hour-label" data-hour="19">19:00</div>
+            <div class="time-slot" data-hour="19" data-minute="30"></div>
+            <div class="time-slot hour-label" data-hour="20">20:00</div>
+            <div class="time-slot" data-hour="20" data-minute="30"></div>
+            <div class="time-slot hour-label" data-hour="21">21:00</div>
+            <div class="time-slot" data-hour="21" data-minute="30"></div>
+            <div class="time-slot hour-label" data-hour="22">22:00</div>
+        </div>
+
+        <div class="calendar-grid" id="calendarGrid">
+            <!-- 動的に生成される日付列 -->
+        </div>
+        </div>
+
+        <div class="controls">
+            <button id="exportCsv" class="export-btn">CSV出力</button>
+            <button id="clickupConfig" class="config-btn">ClickUp設定</button>
+        </div>
+    </div>
+
+    <!-- ClickUp設定モーダル -->
+    <div id="clickupConfigModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2>ClickUp設定</h2>
+            <form id="clickupConfigForm">
+                <div class="form-group">
+                    <label for="apiToken">APIトークン:</label>
+                    <input type="password" id="apiToken" placeholder="pk_...">
+                    <small>ClickUpの設定 > アプリ > APIトークンから取得</small>
+                </div>
+                <div class="form-group">
+                    <label for="teamId">チームID:</label>
+                    <input type="text" id="teamId" placeholder="123456">
+                </div>
+                <div class="form-group">
+                    <label for="listId">リストID:</label>
+                    <input type="text" id="listId" placeholder="123456">
+                </div>
+                <div class="form-actions">
+                    <button type="submit" id="saveClickupConfig">保存</button>
+                    <button type="button" id="cancelClickupConfig">キャンセル</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- タスク作成・編集モーダル -->
+    <div id="taskModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2 id="modalTitle">タスクを作成</h2>
+            <form id="taskForm">
+                <div class="form-group">
+                    <label for="taskName">タスク名:</label>
+                    <input type="text" id="taskName" required>
+                </div>
+                <div class="form-group">
+                    <label>ClickUpタスク:</label>
+                    <select id="clickupParentTask">
+                        <option value="">親タスクを選択</option>
+                    </select>
+                    <select id="clickupChildTask" style="display:none;">
+                        <option value="">子タスクを選択</option>
+                    </select>
+                    <select id="clickupGrandchildTask" style="display:none;">
+                        <option value="">孫タスクを選択</option>
+                    </select>
+                    <button type="button" id="refreshTasks" class="refresh-btn">更新</button>
+                </div>
+                <div class="form-group">
+                    <label for="taskDate">日付:</label>
+                    <input type="date" id="taskDate" required>
+                </div>
+                <div class="form-group">
+                    <label for="startTime">開始時刻:</label>
+                    <input type="time" id="startTime" required>
+                </div>
+                <div class="form-group">
+                    <label for="endTime">終了時刻:</label>
+                    <input type="time" id="endTime" required>
+                </div>
+                <div class="form-actions">
+                    <button type="submit" id="saveTask">保存</button>
+                    <button type="button" id="deleteTask" class="delete-btn" style="display: none;">削除</button>
+                    <button type="button" id="syncToClickup" class="sync-btn" style="display: none;">ClickUpに同期</button>
+                    <button type="button" id="cancelTask">キャンセル</button>
+                </div>
+            </form>
+        </div>
+    </div>
+<button id="syncAllToClickup" class="sync-all-btn">この月のタスクをすべてClickUpに同期</button>
+    <script src="script.js"></script>
+</body>
+</html>
+

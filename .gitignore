@@ -1,0 +1,11 @@
+# Python bytecode
+*.pyc
+__pycache__/
+**/__pycache__/
+venv/
+*.db
+.env
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
