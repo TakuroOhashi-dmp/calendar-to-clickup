@@ -1,7 +1,4 @@
-````markdown
-# カレンダータスク管理システム（ClickUp連携版）
-
-## 概要
+## clickup_to_calender
 
 このアプリは、週表示カレンダー形式でタスクを管理し、ClickUpと連携してタスクの時間記録をワンクリックで送信できるWebアプリです。
 
@@ -10,8 +7,7 @@
 ## 1. 必要な環境
 
 - Python 3.10 以上  
-- pip  
-- Node.js（不要、フロントは静的HTML/JSのみ）  
+- pip    
 - ClickUpアカウント（APIトークン取得のため）  
 
 ---
@@ -21,8 +17,8 @@
 ### 2.1. リポジトリのダウンロード
 
 ```bash
-git clone <このリポジトリのURL>
-cd <リポジトリのディレクトリ>
+git clone https://github.com/TakuroOhashi-dmp/calendar-to-clickup.git
+cd calendar-to-clickup
 ````
 
 ### 2.2. Pythonパッケージのインストール
@@ -105,5 +101,3 @@ python app.py
 
 * サーバー側のコードは `src/routes/` 以下
 * フロントエンドは `src/static/` 以下（`index.html`, `script.js`, `styles.css`）
-
-```
