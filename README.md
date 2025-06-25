@@ -3,6 +3,22 @@
 このアプリは、週表示カレンダー形式でタスクを管理し、ClickUpと連携してタスクの時間記録をワンクリックで送信できるWebアプリです。
 
 ---
+## 簡単な説明
+- Web上のカレンダーに記録したタスクを、月末にワンボタンでその月の仕事内容をclickupに送信できます。
+- このアプリから送信されるタスクは重複して記録されません。
+![image](https://github.com/user-attachments/assets/f76c5ed5-712c-405d-a08a-70bbfd47c1b2)
+
+![image](https://github.com/user-attachments/assets/3e123b61-6062-4cc9-92ad-82945d68bbdc)
+- まずは画面最下部のclickup設定を押し、APIキーとリストID,チームIDを入力しましょう。
+  - APIキーはclickup -> 右上のユーザーアイコン -> Settings -> Appsから取得できます。
+  - リストID,チームIDはタスク一覧を開いた際のURL部分に書いてある、それぞれ8桁・13桁の数字となっています。
+  - https: //app.clickup.com/**チームID**/v/l/6-**リストID**-1
+- タスクの記録は任意の日付時間をドラッグドロップで実行できます。
+- タイトルと、このタスクがclickup上ではどれにあたるかを指定し、保存します。
+- 月末に右下のボタンを押すだけで、その月の**未同期タスク**がすべてclickupのTime trackingに送信されます。
+- clickupに未送信の場合はインジケーターが黄色〇、送信済みは緑〇となります。
+- 一日ごとに右下のボタンを押しても構いません。
+
 
 ## 1. 必要な環境
 
@@ -27,16 +43,13 @@ cd calendar-to-clickup
 pip install -r requirements.txt
 ```
 
-### 2.3. データベースの初期化（初回のみ）
-
-初回起動時に自動で `src/database/app.db` が作成されます。特別な操作は不要です。
-
 ---
 
 ## 3. サーバーの起動
-
+calender-to-clickup/src/main.pyを起動
 ```bash
-python app.py
+cd calender-to-clickup/src
+python main.py
 ```
 
 デフォルトで [http://localhost:5000](http://localhost:5000) で起動します。
