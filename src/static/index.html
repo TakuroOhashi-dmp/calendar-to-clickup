@@ -143,6 +143,22 @@
             </form>
         </div>
     </div>
+
+        <div id="syncAllModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2>一括同期の確認</h2>
+            <p>以下の未同期タスクをClickUpに送信します。</p>
+            <ul id="syncTaskList" class="sync-task-list">
+                <!-- 未同期タスクのリストがここに動的に追加 -->
+            </ul>
+            <div class="form-actions">
+                <button type="button" id="executeSyncAll">同期実行</button>
+                <button type="button" id="cancelSyncAll">キャンセル</button>
+            </div>
+        </div>
+    </div>
+
 <button id="syncAllToClickup" class="sync-all-btn">この月のタスクをすべてClickUpに同期</button>
     <script src="script.js"></script>
 </body>

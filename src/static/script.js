@@ -589,7 +589,14 @@ class CalendarTaskManager {
         const syncBtn = document.getElementById('syncToClickup');
         const refreshBtn = document.getElementById('refreshTasks');
         const form = document.getElementById('taskForm');
+        
+        const syncAllModal = document.getElementById('syncAllModal');
+        const closeSyncAllBtn = syncAllModal.querySelector('.close');
+        const cancelSyncAllBtn = document.getElementById('cancelSyncAll');
+        const executeSyncAllBtn = document.getElementById('executeSyncAll');
 
+        const closeSyncModal = () => syncAllModal.style.display = 'none';
+    
         const clearSelection = () => {
             modal.style.display = 'none';
             this.selectedTask = null;
@@ -600,9 +607,15 @@ class CalendarTaskManager {
         cancelBtn.addEventListener('click', clearSelection);
 
         window.addEventListener('click', (e) => {
-            if (e.target === modal) {
-                clearSelection();
-            }
+            if (e.target === modal) clearSelection();
+        });
+
+        closeSyncAllBtn.addEventListener('click', closeSyncModal);
+        cancelSyncAllBtn.addEventListener('click', closeSyncModal);
+        executeSyncAllBtn.addEventListener('click', () => this.executeSyncAll());
+        
+        window.addEventListener('click', (e) => {
+            if (e.target === syncAllModal) closeSyncModal();
         });
 
         form.addEventListener('submit', (e) => {
@@ -1108,34 +1121,48 @@ class CalendarTaskManager {
             return;
         }
 
-        // 今月のタスクのみ抽出
+        // 今月のタスクのうち、未同期かつClickUpタスクIDが設定されているものを抽出
         const year = this.currentDate.getFullYear();
-        const month = this.currentDate.getMonth() + 1;
-        const firstDay = new Date(year, month - 1, 1);
-        const lastDay = new Date(year, month, 0);
+        const month = this.currentDate.getMonth();
+        const firstDay = new Date(year, month, 1);
+        const lastDay = new Date(year, month + 1, 0);
 
-        const monthTasks = this.tasks.filter(task => {
+        const tasksToSync = this.tasks.filter(task => {
             const taskDate = new Date(task.date);
-            return taskDate >= firstDay && taskDate <= lastDay;
+            return taskDate >= firstDay && taskDate <= lastDay && task.clickupTaskId && !task.clickupSynced;
         });
 
-        if (monthTasks.length === 0) {
-            alert('今月のタスクがありません。');
+        if (tasksToSync.length === 0) {
+            alert('今月、同期対象のタスクはありません。');
             return;
         }
 
-        // 各タスクごとに同期
-        let success = 0, fail = 0;
-        for (const task of monthTasks) {
-            // タスクにClickUpタスクIDが紐づいているかチェック
-            let clickupTaskId = '';
-            if (task.clickupTaskId) {
-                clickupTaskId = task.clickupTaskId;
-            } else {
-                // ドロップダウン選択がなければスキップ
-                continue;
-            }
+        // モーダルにタスク一覧を表示
+        const taskListUl = document.getElementById('syncTaskList');
+        taskListUl.innerHTML = '';
+        tasksToSync.forEach(task => {
+            const li = document.createElement('li');
+            li.innerHTML = `
+                <span class="task-name">${task.name}</span>
+                <span class="task-date">${task.date}</span>
+            `;
+            li.dataset.taskId = task.id;
+            taskListUl.appendChild(li);
+        });
 
+        // モーダルを表示
+        document.getElementById('syncAllModal').style.display = 'block';
+    }
+
+    async executeSyncAll() {
+        const modal = document.getElementById('syncAllModal');
+        const taskListItems = modal.querySelectorAll('#syncTaskList li');
+        const taskIdsToSync = Array.from(taskListItems).map(li => li.dataset.taskId);
+        
+        const tasksToSync = this.tasks.filter(task => taskIdsToSync.includes(task.id));
+
+        let success = 0, fail = 0;
+        for (const task of tasksToSync) {
             try {
                 const date = task.date;
                 const startTime = task.startTime;
@@ -1147,7 +1174,7 @@ class CalendarTaskManager {
 
                 const payload = {
                     team_id: this.clickupConfig.teamId,
-                    task_id: clickupTaskId,
+                    task_id: task.clickupTaskId,
                     start_time: startDateTime.getTime(),
                     duration: duration
                 };
@@ -1163,7 +1190,7 @@ class CalendarTaskManager {
 
                 if (response.ok) {
                     success++;
-                    task.clickupSynced = true;
+                    task.clickupSynced = true; // 同期済みフラグを立てる
                 } else {
                     fail++;
                 }
@@ -1171,8 +1198,10 @@ class CalendarTaskManager {
                 fail++;
             }
         }
+
         this.saveTasks();
         this.renderTasks();
+        modal.style.display = 'none'; // モーダルを閉じる
         alert(`同期完了: ${success}件成功, ${fail}件失敗`);
     }
 }
