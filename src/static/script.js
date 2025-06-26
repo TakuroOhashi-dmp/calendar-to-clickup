@@ -1,7 +1,7 @@
 class CalendarTaskManager {
     constructor() {
         this.currentDate = new Date();
-        this.tasks = this.loadTasks();
+        this.tasks = [];
         this.selectedTask = null;
         this.isDragging = false;
         this.dragStartPos = { x: 0, y: 0 };
@@ -13,14 +13,14 @@ class CalendarTaskManager {
         this.resizeStartTime = null;
 
         // ClickUp関連の設定
-        this.clickupConfig = this.loadClickupConfig();
+        this.clickupConfig = {}; 
         this.clickupTasks = [];
-        this.backendUrl = 'http://localhost:5000';
-
-        this.init();
+        this.backendUrl = ''; 
     }
 
-    init() {
+    async init() {
+        await this.loadTasks(); // APIからタスクを読み込む
+        await this.loadClickupConfig(); 
         this.renderCalendar();
         this.bindEvents();
         this.updateDateRange();
@@ -274,58 +274,54 @@ class CalendarTaskManager {
         if (oneLineDiv) oneLineDiv.textContent = `${direction === 'top' ? newStart : task.startTime} ${task.name}`;
     };
 
-    handleResizeUp = (e) => {
+    handleResizeUp = async (e) => { // asyncを追加
         if (!this.resizingTask) return;
+
         const task = this.resizingTask;
         const direction = this.resizingDirection;
         const deltaY = e.clientY - this.resizeStartY;
         const steps = Math.round(deltaY / 30);
 
-        let newStart = task.startTime;
-        let newEnd = task.endTime;
+        let newStart = this.parseTime(task.startTime);
+        let newEnd = this.parseTime(task.endTime);
 
         if (direction === 'top') {
-            const [h, m] = this.resizeStartTime.start.split(':').map(Number);
-            let total = h * 60 + m + steps * 30;
-            const [eh, em] = task.endTime.split(':').map(Number);
-            const endTotal = eh * 60 + em;
-            total = Math.min(total, endTotal - 30);
-            total = Math.max(total, 6 * 60);
-            const nh = Math.floor(total / 60);
-            const nm = total % 60;
-            newStart = `${nh.toString().padStart(2, '0')}:${nm.toString().padStart(2, '0')}`;
-        } else if (direction === 'bottom') {
-            const [h, m] = this.resizeStartTime.end.split(':').map(Number);
-            let total = h * 60 + m + steps * 30;
-            const [sh, sm] = task.startTime.split(':').map(Number);
-            const startTotal = sh * 60 + sm;
-            total = Math.max(total, startTotal + 30);
-            total = Math.min(total, 22 * 60);
-            const nh = Math.floor(total / 60);
-            const nm = total % 60;
-            newEnd = `${nh.toString().padStart(2, '0')}:${nm.toString().padStart(2, '0')}`;
+            newStart.setMinutes(newStart.getMinutes() + steps * 30);
+        } else {
+            newEnd.setMinutes(newEnd.getMinutes() + steps * 30);
         }
 
-        // 変更を保存
-        if (direction === 'top' && newStart !== task.startTime) {
-            task.startTime = newStart;
+        // 30分未満のタスクにならないように制御
+        if ((newEnd.getTime() - newStart.getTime()) < 30 * 60 * 1000) {
+             // 変更をキャンセルして元の状態に戻す
+            this.renderTasks();
+        } else {
+            task.startTime = `${String(newStart.getHours()).padStart(2, '0')}:${String(newStart.getMinutes()).padStart(2, '0')}`;
+            task.endTime = `${String(newEnd.getHours()).padStart(2, '0')}:${String(newEnd.getMinutes()).padStart(2, '0')}`;
+            
+            // 変更をAPI経由で保存
+            try {
+                await fetch(`${this.backendUrl}/api/tasks/${task.id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(task),
+                    credentials: 'include'
+                });
+            } catch (err) {
+                console.error('タスクのリサイズ保存エラー:', err);
+                alert('タスクの更新に失敗しました。');
+            } finally {
+                this.renderTasks();
+            }
         }
-        if (direction === 'bottom' && newEnd !== task.endTime) {
-            task.endTime = newEnd;
-        }
-        this.saveTasks();
-        this.renderTasks();
 
         // 後処理
         this.resizingTask = null;
         this.resizingDirection = null;
-        this.resizeStartY = 0;
-        this.resizeStartTime = null;
         document.body.classList.remove('resizing');
         document.removeEventListener('mousemove', this.handleResizeMove);
         document.removeEventListener('mouseup', this.handleResizeUp);
     };
-
 
     // イベントバインディング
     bindEvents() {
@@ -360,8 +356,11 @@ class CalendarTaskManager {
         this.bindModalEvents();
 
         // CSV出力
-        document.getElementById('exportCsv').addEventListener('click', () => {
-            this.exportToCSV();
+        //document.getElementById('exportCsv').addEventListener('click', () => {
+        //    this.exportToCSV();
+        //});
+        document.getElementById('importFromClickup').addEventListener('click', () => {
+            this.importFromClickup();
         });
 
         // ClickUp設定
@@ -462,7 +461,8 @@ class CalendarTaskManager {
         if (!taskBlock) return;
 
         const taskId = taskBlock.dataset.taskId;
-        this.selectedTask = this.tasks.find(task => task.id === taskId);
+        // 文字列のIDを数値に変換して比較
+        this.selectedTask = this.tasks.find(task => task.id === parseInt(taskId));
 
         if (this.selectedTask) {
             this.showTaskModal(true);
@@ -698,15 +698,28 @@ class CalendarTaskManager {
     }
 
     // タスク削除
-    deleteTask() {
+    async deleteTask() {
         if (!this.selectedTask) return;
 
-        this.tasks = this.tasks.filter(task => task.id !== this.selectedTask.id);
-        this.saveTasks();
-        this.renderTasks();
+        try {
+            const response = await fetch(`${this.backendUrl}/api/tasks/${this.selectedTask.id}`, {
+                method: 'DELETE',
+                credentials: 'include'
+            });
+            if (!response.ok) {
+                throw new Error('タスクの削除に失敗しました。');
+            }
+            
+            await this.loadTasks(); // 削除後にタスク一覧を再読み込み
+            this.renderTasks();
 
-        document.getElementById('taskModal').style.display = 'none';
-        this.selectedTask = null;
+            document.getElementById('taskModal').style.display = 'none';
+            this.selectedTask = null;
+
+        } catch (e) {
+            console.error('タスク削除エラー:', e);
+            alert(e.message);
+        }
     }
 
     // CSV出力
@@ -813,6 +826,7 @@ class CalendarTaskManager {
     }
 
     // ローカルストレージ
+    /*
     loadTasks() {
         const saved = localStorage.getItem('calendarTasks');
         return saved ? JSON.parse(saved) : [];
@@ -821,22 +835,122 @@ class CalendarTaskManager {
     saveTasks() {
         localStorage.setItem('calendarTasks', JSON.stringify(this.tasks));
     }
+    */
+
+    async loadTasks() {
+        try {
+            const response = await fetch(`${this.backendUrl}/api/tasks`, { credentials: 'include' });
+            if (response.ok) {
+                this.tasks = await response.json();
+            } else {
+                console.error('タスクの読み込みに失敗しました。');
+                this.tasks = [];
+            }
+        } catch (e) {
+            console.error('タスクの読み込み中にエラーが発生しました:', e);
+            this.tasks = [];
+        }
+    }
+
+        async saveTask() {
+        const name = document.getElementById('taskName').value.trim();
+        const date = document.getElementById('taskDate').value;
+        const startTime = document.getElementById('startTime').value;
+        const endTime = document.getElementById('endTime').value;
+
+        let clickupTaskId = '';
+        const grandchildId = document.getElementById('clickupGrandchildTask').value;
+        const childId = document.getElementById('clickupChildTask').value;
+        const parentId = document.getElementById('clickupParentTask').value;
+        if (grandchildId) clickupTaskId = grandchildId;
+        else if (childId) clickupTaskId = childId;
+        else if (parentId) clickupTaskId = parentId;
+
+        if (!name || !date || !startTime || !endTime) {
+            alert('すべての項目を入力してください。');
+            return;
+        }
+        if (startTime >= endTime) {
+            alert('終了時刻は開始時刻より後に設定してください。');
+            return;
+        }
+
+        const taskData = {
+            name, date, startTime, endTime, clickupTaskId,
+            clickupSynced: this.selectedTask ? this.selectedTask.clickupSynced : false
+        };
+
+
+        try {
+            let response;
+            const fetchOptions = {
+                method: this.selectedTask ? 'PUT' : 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(taskData),
+                credentials: 'include' // ▼ credentials を追加
+            };
+            const url = this.selectedTask 
+                ? `${this.backendUrl}/api/tasks/${this.selectedTask.id}` 
+                : `${this.backendUrl}/api/tasks`;
+            
+            response = await fetch(url, fetchOptions);
+
+            if (!response.ok) throw new Error('タスクの保存に失敗しました。');
+            
+            await this.loadTasks();
+            this.renderTasks();
+            document.getElementById('taskModal').style.display = 'none';
+            this.selectedTask = null;
+        } catch (e) {
+            console.error('タスク保存エラー:', e);
+            alert(e.message);
+        }
+    }
 
     // ClickUp設定の読み込み
-    loadClickupConfig() {
-        const config = localStorage.getItem('clickupConfig');
-        return config ? JSON.parse(config) : {
-            apiToken: '',
-            teamId: '',
-            listId: ''
-        };
+    async loadClickupConfig() {
+        try {
+            const response = await fetch(`${this.backendUrl}/api/clickup/config`, { credentials: 'include' });
+            if (response.ok) {
+                const config = await response.json();
+                this.clickupConfig = {
+                    apiToken: config.api_token,
+                    teamId: config.team_id,
+                    listId: config.list_id
+                };
+            } else {
+                this.clickupConfig = { apiToken: '', teamId: '', listId: '' };
+            }
+        } catch (error) {
+            console.error('ClickUp設定の読み込みエラー:', error);
+            this.clickupConfig = { apiToken: '', teamId: '', listId: '' };
+        }
+        this.updateClickupStatus();
     }
 
     // ClickUp設定の保存
-    saveClickupConfig(config) {
-        localStorage.setItem('clickupConfig', JSON.stringify(config));
-        this.clickupConfig = config;
-        this.updateClickupStatus();
+    async saveClickupConfig(config) {
+        try {
+            const response = await fetch(`${this.backendUrl}/api/clickup/config`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    api_token: config.apiToken,
+                    team_id: config.teamId,
+                    list_id: config.listId
+                }),
+                credentials: 'include'
+            });
+            if (!response.ok) {
+                throw new Error('設定の保存に失敗しました。');
+            }
+            this.clickupConfig = config;
+            this.updateClickupStatus();
+            alert('設定を保存しました。');
+        } catch (error) {
+            console.error('ClickUp設定の保存エラー:', error);
+            alert(error.message);
+        }
     }
 
     // ClickUp設定モーダルの表示
@@ -873,46 +987,29 @@ class CalendarTaskManager {
             }
         });
 
-        form.addEventListener('submit', (e) => {
+        form.addEventListener('submit', async (e) => {
             e.preventDefault();
-
             const config = {
                 apiToken: document.getElementById('apiToken').value.trim(),
                 teamId: document.getElementById('teamId').value.trim(),
                 listId: document.getElementById('listId').value.trim()
             };
-
-            if (!config.apiToken || !config.teamId || !config.listId) {
-                alert('すべての項目を入力してください。');
-                return;
-            }
-
-            this.saveClickupConfig(config);
+            await this.saveClickupConfig(config);
             modal.style.display = 'none';
-
-            // 設定保存後にタスクを読み込み
             this.loadClickupTasks();
         });
     }
 
     // ClickUpタスクの読み込み
     async loadClickupTasks() {
-        if (!this.clickupConfig.apiToken || !this.clickupConfig.listId) {
-            console.log('ClickUp設定が不完全です');
-            return;
-        }
-
         this.updateClickupStatus('loading');
 
         try {
-            const response = await fetch(`${this.backendUrl}/api/clickup/tasks?list_id=${this.clickupConfig.listId}`, {
-                headers: {
-                    'X-ClickUp-Token': this.clickupConfig.apiToken
-                }
-            });
+            const response = await fetch(`${this.backendUrl}/api/clickup/tasks`, { credentials: 'include' });
 
             if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'タスクの読み込みに失敗');
             }
 
             const data = await response.json();
@@ -1077,7 +1174,6 @@ class CalendarTaskManager {
             const duration = endDateTime.getTime() - startDateTime.getTime(); // ミリ秒
 
             const payload = {
-                team_id: this.clickupConfig.teamId,
                 task_id: clickupTaskId,
                 start_time: startDateTime.getTime(), // UTCエポック
                 duration: duration
@@ -1085,23 +1181,22 @@ class CalendarTaskManager {
 
             const response = await fetch(`${this.backendUrl}/api/clickup/time-entry`, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-ClickUp-Token': this.clickupConfig.apiToken
-                },
-                body: JSON.stringify(payload)
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+                credentials: 'include'
             });
 
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
-            // --- 追加: 同期済みフラグを立てる ---
-            if (this.selectedTask) {
-                this.selectedTask.clickupSynced = true;
-                this.saveTasks();
-                this.renderTasks();
-            }
-
+            this.selectedTask.clickupSynced = true;
+            await fetch(`${this.backendUrl}/api/tasks/${this.selectedTask.id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(this.selectedTask),
+                credentials: 'include'
+            });
+            this.renderTasks();
             const result = await response.json();
             alert('ClickUpに時間記録を作成しました！');
 
@@ -1116,64 +1211,135 @@ class CalendarTaskManager {
     }
 
     async syncAllTasksToClickup() {
-        if (!this.clickupConfig.apiToken || !this.clickupConfig.teamId) {
-            alert('ClickUp設定が不完全です。');
-            return;
-        }
-
-        // 今月のタスクのうち、未同期かつClickUpタスクIDが設定されているものを抽出
         const year = this.currentDate.getFullYear();
         const month = this.currentDate.getMonth();
-        const firstDay = new Date(year, month, 1);
-        const lastDay = new Date(year, month + 1, 0);
 
+        // 現在表示している月のタスクで、未同期かつClickUpタスクIDが設定されているものを抽出
         const tasksToSync = this.tasks.filter(task => {
             const taskDate = new Date(task.date);
-            return taskDate >= firstDay && taskDate <= lastDay && task.clickupTaskId && !task.clickupSynced;
+            return taskDate.getFullYear() === year &&
+                   taskDate.getMonth() === month &&
+                   task.clickupTaskId && // ClickUpタスクIDが設定されている
+                   !task.clickupSynced;  // まだ同期されていない
         });
 
         if (tasksToSync.length === 0) {
-            alert('今月、同期対象のタスクはありません。');
+            alert('この月に同期対象のタスクはありません。\n\n（ClickUpタスクが割り当てられていないか、既に同期済みのタスクです）');
             return;
         }
 
-        // モーダルにタスク一覧を表示
-        const taskListUl = document.getElementById('syncTaskList');
-        taskListUl.innerHTML = '';
+        const modal = document.getElementById('syncAllModal');
+        const listElement = document.getElementById('syncTaskList');
+        listElement.innerHTML = ''; // 前回のリストをクリア
+
         tasksToSync.forEach(task => {
-            const li = document.createElement('li');
-            li.innerHTML = `
+            const listItem = document.createElement('li');
+            listItem.innerHTML = `
                 <span class="task-name">${task.name}</span>
                 <span class="task-date">${task.date}</span>
             `;
-            li.dataset.taskId = task.id;
-            taskListUl.appendChild(li);
+            listElement.appendChild(listItem);
         });
 
-        // モーダルを表示
-        document.getElementById('syncAllModal').style.display = 'block';
+        // 同期対象のタスクリストをモーダルのデータ属性に保存
+        modal.dataset.tasksToSync = JSON.stringify(tasksToSync);
+
+        modal.style.display = 'block';
+    }
+    async importFromClickup() {
+        if (!this.clickupConfig.apiToken) {
+            alert('先にClickUp設定を行ってください。');
+            return;
+        }
+
+        if (!confirm('表示中の週のタイムトラッキングデータをClickUpから取り込みますか？')) {
+            return;
+        }
+
+        const startOfWeek = this.getStartOfWeek(this.currentDate);
+        const endOfWeek = new Date(startOfWeek);
+        endOfWeek.setDate(startOfWeek.getDate() + 6);
+
+        const startDateStr = this.formatDate(startOfWeek);
+        const endDateStr = this.formatDate(endOfWeek);
+
+        try {
+            const response = await fetch(`${this.backendUrl}/api/clickup/time-entries?start_date=${startDateStr}&end_date=${endDateStr}`, {
+                credentials: 'include'
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'タイムトラッキングデータの取得に失敗しました。');
+            }
+
+            const timeEntries = await response.json();
+            if (timeEntries.length === 0) {
+                alert('指定された期間に新しいタイムトラッキングデータは見つかりませんでした。');
+                return;
+            }
+
+            const existingEntryIds = new Set(this.tasks.map(t => t.clickupTimeEntryId).filter(id => id));
+            const newTasksData = [];
+
+            for (const entry of timeEntries) {
+                if (existingEntryIds.has(entry.time_entry_id)) {
+                    continue; // 既に存在する場合はスキップ
+                }
+                newTasksData.push({
+                    name: entry.task_name,
+                    date: entry.date,
+                    startTime: entry.startTime,
+                    endTime: entry.endTime,
+                    clickupTaskId: entry.task_id,
+                    clickupTimeEntryId: entry.time_entry_id,
+                    clickupSynced: true
+                });
+            }
+
+            if (newTasksData.length === 0) {
+                alert('新しいタイムトラッキングデータはありませんでした。すべて取り込み済みです。');
+                return;
+            }
+
+            // 新しいタスクをバックエンドに一括で保存
+            const savePromises = newTasksData.map(taskData =>
+                fetch(`${this.backendUrl}/api/tasks`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(taskData),
+                    credentials: 'include'
+                })
+            );
+            
+            await Promise.all(savePromises);
+            alert(`${newTasksData.length}件のタスクをClickUpから取り込みました。`);
+
+            await this.loadTasks();
+            this.renderTasks();
+
+        } catch (error) {
+            console.error('ClickUpからのインポートエラー:', error);
+            alert(`エラーが発生しました: ${error.message}`);
+        }
     }
 
     async executeSyncAll() {
         const modal = document.getElementById('syncAllModal');
-        const taskListItems = modal.querySelectorAll('#syncTaskList li');
-        const taskIdsToSync = Array.from(taskListItems).map(li => li.dataset.taskId);
-        
-        const tasksToSync = this.tasks.filter(task => taskIdsToSync.includes(task.id));
+        const tasksToSync = JSON.parse(modal.dataset.tasksToSync || '[]');
+        let success = 0;
+        let fail = 0;
 
-        let success = 0, fail = 0;
         for (const task of tasksToSync) {
             try {
                 const date = task.date;
                 const startTime = task.startTime;
                 const endTime = task.endTime;
-                const jst = `${date}T${startTime}:00+09:00`;
-                const startDateTime = new Date(jst);
+                const startDateTime = new Date(`${date}T${startTime}:00+09:00`);
                 const endDateTime = new Date(`${date}T${endTime}:00+09:00`);
                 const duration = endDateTime.getTime() - startDateTime.getTime();
 
                 const payload = {
-                    team_id: this.clickupConfig.teamId,
                     task_id: task.clickupTaskId,
                     start_time: startDateTime.getTime(),
                     duration: duration
@@ -1181,16 +1347,22 @@ class CalendarTaskManager {
 
                 const response = await fetch(`${this.backendUrl}/api/clickup/time-entry`, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-ClickUp-Token': this.clickupConfig.apiToken
-                    },
-                    body: JSON.stringify(payload)
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                    credentials: 'include'
                 });
 
                 if (response.ok) {
                     success++;
-                    task.clickupSynced = true; // 同期済みフラグを立てる
+                    task.clickupSynced = true;
+                    
+                    // 同期成功をDBに反映
+                    await fetch(`${this.backendUrl}/api/tasks/${task.id}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(task),
+                        credentials: 'include'
+                    });
                 } else {
                     fail++;
                 }
@@ -1199,9 +1371,10 @@ class CalendarTaskManager {
             }
         }
 
-        this.saveTasks();
+        // this.saveTasks(); // 古い処理を削除
+        await this.loadTasks(); // DBから最新のタスク情報を再読み込み
         this.renderTasks();
-        modal.style.display = 'none'; // モーダルを閉じる
+        modal.style.display = 'none';
         alert(`同期完了: ${success}件成功, ${fail}件失敗`);
     }
 }
@@ -1210,5 +1383,119 @@ class CalendarTaskManager {
 
 // アプリケーション初期化
 document.addEventListener('DOMContentLoaded', () => {
-    new CalendarTaskManager();
+    // 認証モーダル関連の要素を取得
+    const authModal = document.getElementById('authModal');
+    const closeAuthModal = document.getElementById('closeAuthModal');
+    const authForm = document.getElementById('authForm');
+    const authTitle = document.getElementById('authTitle');
+    const authEmailGroup = document.getElementById('authEmailGroup');
+    const authSubmitBtn = document.getElementById('authSubmitBtn');
+    const switchAuthBtn = document.getElementById('switchAuthBtn');
+    const authError = document.getElementById('authError');
+    const logoutBtn = document.getElementById('logoutBtn');
+
+    let isLoginMode = true;
+    let calendarApp = null; // カレンダーインスタンスを保持
+
+    // --- UI更新とアプリケーション初期化を行う関数 ---
+    const initializeApp = async () => {
+        try {
+            const res = await fetch('/api/me', { credentials: 'include' });
+            if (res.ok) {
+                // ログイン済みの場合
+                const user = await res.json();
+                
+                // ユーザー情報表示（重複追加を防ぐ）
+                const existingUserInfo = document.querySelector('.user-info');
+                if (existingUserInfo) {
+                    existingUserInfo.remove();
+                }
+                document.getElementById('header').insertAdjacentHTML('beforeend', `<span class="user-info">ようこそ, ${user.username}さん</span>`);
+                
+                logoutBtn.style.display = 'inline-block';
+                authModal.style.display = 'none';
+
+                // カレンダーを初期化
+                if (!calendarApp) {
+                    calendarApp = new CalendarTaskManager();
+                    await calendarApp.init();
+                }
+            } else {
+                // 未ログインの場合
+                logoutBtn.style.display = 'none';
+                const userInfo = document.querySelector('.user-info');
+                if (userInfo) userInfo.remove();
+                showAuthModal(true);
+            }
+        } catch (e) {
+            console.error("認証状態の確認中にエラー:", e);
+            showAuthModal(true); // エラー時もログインモーダル表示
+        }
+    };
+
+    // --- 認証モーダルのUI制御 ---
+    function showAuthModal(loginMode = true) {
+        isLoginMode = loginMode;
+        authTitle.textContent = loginMode ? 'ログイン' : '新規登録';
+        authSubmitBtn.textContent = loginMode ? 'ログイン' : '登録';
+        switchAuthBtn.textContent = loginMode ? '新規登録はこちら' : 'ログインはこちら';
+        authEmailGroup.style.display = loginMode ? 'none' : 'block';
+        authModal.style.display = 'block';
+        authError.textContent = '';
+        authForm.reset();
+    }
+
+    function closeModal() {
+        authModal.style.display = 'none';
+    }
+
+    // --- イベントリスナー ---
+    closeAuthModal.onclick = closeModal;
+    window.onclick = (e) => { if (e.target === authModal) closeModal(); };
+    switchAuthBtn.onclick = () => showAuthModal(!isLoginMode);
+
+    logoutBtn.onclick = async () => {
+        await fetch('/api/logout', { method: 'POST', credentials: 'include' });
+        // ページをリロードして状態をリセット
+        location.reload();
+    };
+
+    authForm.onsubmit = async (e) => {
+        e.preventDefault();
+        authError.textContent = '';
+        const username = document.getElementById('authUsername').value.trim();
+        const password = document.getElementById('authPassword').value;
+        const email = document.getElementById('authEmail').value.trim();
+        const url = isLoginMode ? '/api/login' : '/api/register';
+        const body = isLoginMode ? { username, password } : { username, email, password };
+
+        try {
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+                credentials: 'include'
+            });
+
+            const data = await res.json();
+
+            if (res.ok) {
+                if (isLoginMode) {
+                    // ログイン成功時、リロードせずにアプリを初期化
+                    await initializeApp();
+                } else {
+                    // 新規登録成功時、ログインモードに切り替えてメッセージ表示
+                    showAuthModal(true);
+                    authError.textContent = '登録が完了しました。ログインしてください。';
+                }
+            } else {
+                authError.textContent = data.error || '処理に失敗しました。';
+            }
+        } catch (err) {
+            authError.textContent = '通信エラーが発生しました。';
+        }
+    };
+
+    // --- 初期実行 ---
+    initializeApp();
 });

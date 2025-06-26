@@ -8,7 +8,7 @@
 </head>
 <body>
     <div class="container">
-        <header class="header">
+        <header class="header" id="header">
             <div class="nav-controls">
                 <button id="prevWeek" class="nav-btn">&lt;</button>
                 <button id="nextWeek" class="nav-btn">&gt;</button>
@@ -20,6 +20,7 @@
                 <button class="view-btn active">week</button>
                 <button class="view-btn">day</button>
             </div>
+            <button id="importFromClickup" class="today-btn" style="margin-left: 10px;">ClickUpから取込</button>
         </header>
 
     <div class="calendar-container">
@@ -161,6 +162,36 @@
 
 <button id="syncAllToClickup" class="sync-all-btn">この月のタスクをすべてClickUpに同期</button>
     <script src="script.js"></script>
+
+<button id="logoutBtn" style="display:none;">ログアウト</button>
+
+
+<div id="authModal" class="modal">
+  <div class="modal-content">
+    <span class="close" id="closeAuthModal">&times;</span>
+    <h2 id="authTitle">ログイン</h2>
+    <form id="authForm">
+      <div class="form-group">
+        <label for="authUsername">ユーザー名</label>
+        <input type="text" id="authUsername" required>
+      </div>
+      <div class="form-group" id="authEmailGroup" style="display:none;">
+        <label for="authEmail">メールアドレス</label>
+        <input type="email" id="authEmail">
+      </div>
+      <div class="form-group">
+        <label for="authPassword">パスワード</label>
+        <input type="password" id="authPassword" required>
+      </div>
+      <div class="form-actions">
+        <button type="submit" id="authSubmitBtn">ログイン</button>
+        <button type="button" id="switchAuthBtn">新規登録はこちら</button>
+      </div>
+    </form>
+    <div id="authError" style="color:#ef4444;margin-top:10px;"></div>
+  </div>
+</div>
+
 </body>
 </html>
 

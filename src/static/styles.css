@@ -621,3 +621,24 @@ body {
 #cancelSyncAll:hover {
     background: #4b5563;
 }
+
+#authModal .modal-content {
+    max-width: 400px;
+    margin: 10% auto;
+    background: #23272f;
+    color: #fff;
+}
+#authModal label {
+    font-size: 15px;
+}
+#authModal input {
+    background: #333;
+    color: #fff;
+    border: 1px solid #555;
+}
+#authModal .form-actions {
+    justify-content: space-between;
+}
+#authError {
+    min-height: 20px;
+}
